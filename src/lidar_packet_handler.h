@@ -14,6 +14,8 @@
 #include "ouster_ros/os_ros.h"
 // clang-format on
 
+#include <queue>
+
 #include <pcl_conversions/pcl_conversions.h>
 
 namespace {
@@ -99,6 +101,9 @@ class LidarPacketHandler {
         lidar_scan = std::make_unique<ouster::LidarScan>(
             info.format.columns_per_frame, info.format.pixels_per_column,
             info.format.udp_profile_lidar);
+
+        auto pnh = ros::NodeHandle("~");
+        sub_time_stamp = pnh.subscribe("/sensor_sync_node/trigger_2", 10, &LidarPacketHandler::trigger_stamp_cb, this, ros::TransportHints().tcpNoDelay());
 
         // initalize time handlers
         scan_col_ts_spacing_ns = compute_scan_col_ts_spacing_ns(info.mode);
@@ -239,6 +244,44 @@ class LidarPacketHandler {
         lidar_scan_estimated_ts = compute_scan_ts(lidar_scan->timestamp());
         lidar_scan_estimated_msg_ts =
             impl::ts_to_ros_time(lidar_scan_estimated_ts);
+
+        // Change the timestamp here
+        ros::Time corrected_stamp;
+        while (!time_stamp_queue.empty())
+        {
+          uint32_t trigger_count = std::stoul(time_stamp_queue.front().frame_id);
+          
+          // Special handling for the first
+          if (trigger_count == 1)
+          {
+            if (lidar_scan_estimated_msg_ts.sec != 1)
+            {
+              break;
+            }
+          }
+          std::cout << "\tchecking: " << trigger_count << std::endl;
+          std::cout << "against: " << lidar_scan_estimated_msg_ts.sec << std::endl; 
+          if (trigger_count == lidar_scan_estimated_msg_ts.sec)
+          {
+            corrected_stamp.fromSec(time_stamp_queue.front().stamp.toSec() + lidar_scan_estimated_msg_ts.nsec / 1e9);
+            time_stamp_queue.pop();
+            break;
+          }
+          else if (trigger_count < lidar_scan_estimated_msg_ts.sec)
+          {
+            std::cout << "dropping unused trigger message. trigger count: " << trigger_count << " original lidar output: " << lidar_scan_estimated_msg_ts << std::endl;
+            time_stamp_queue.pop();
+          }
+          else
+          {
+            std::cout << "Fatal error. trigger count: " << trigger_count << " original lidar output: " << lidar_scan_estimated_msg_ts << std::endl;
+            ros::shutdown();
+          }
+        }
+        std::cout << "original: " << lidar_scan_estimated_msg_ts.toSec() << std::endl;
+        std::cout << "modified: " << corrected_stamp.toSec() << std::endl;
+        lidar_scan_estimated_msg_ts = corrected_stamp;
+        // This means that the timestamp of the clouds will be zero until the first trigger is recieved.
         return true;
     }
 
@@ -259,6 +302,11 @@ class LidarPacketHandler {
         return true;
     }
 
+    void trigger_stamp_cb(const std_msgs::HeaderConstPtr & msg)
+    {
+      time_stamp_queue.push(*msg);
+    }
+
     static double compute_scan_col_ts_spacing_ns(sensor::lidar_mode ld_mode) {
         const auto scan_width = sensor::n_cols_of_lidar_mode(ld_mode);
         const auto scan_frequency = sensor::frequency_of_lidar_mode(ld_mode);
@@ -271,6 +319,10 @@ class LidarPacketHandler {
     std::unique_ptr<ouster::LidarScan> lidar_scan;
     uint64_t lidar_scan_estimated_ts;
     ros::Time lidar_scan_estimated_msg_ts;
+
+    ros::Subscriber sub_time_stamp;
+    std::queue<std_msgs::Header> time_stamp_queue;
+    const std::string node_ready_param_name{"/ready"};
 
     bool lidar_handler_ros_time_frame_ts_initialized = false;
     ros::Time lidar_handler_ros_time_frame_ts;
