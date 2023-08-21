@@ -259,6 +259,7 @@ class LidarPacketHandler {
         ros::Time corrected_stamp;
         if (lidar_scan_estimated_msg_ts.sec >= 5)
         {
+          std::lock_guard<std::mutex> lock(time_stamp_queue_mutex);
           // Since the buffer overflows at 4.something, handling the count before 5 would require additional logic. 
           // Instead, we just skip the first 4 pointclouds and then start with the simpler logic.
           while (!time_stamp_queue.empty())
@@ -324,6 +325,7 @@ class LidarPacketHandler {
 
     void trigger_stamp_cb(const std_msgs::HeaderConstPtr & msg)
     {
+      std::lock_guard<std::mutex> lock(time_stamp_queue_mutex);
       time_stamp_queue.push(*msg);
     }
 
@@ -342,6 +344,7 @@ class LidarPacketHandler {
 
     ros::Subscriber sub_time_stamp;
     std::queue<std_msgs::Header> time_stamp_queue;
+    std::mutex time_stamp_queue_mutex;
     const std::string node_ready_param_name{"/ready"};
 
     bool lidar_handler_ros_time_frame_ts_initialized = false;
