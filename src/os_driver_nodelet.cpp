@@ -56,6 +56,7 @@ class OusterDriver : public OusterSensor {
         bool use_ros_time = timestamp_mode_arg == "TIME_FROM_ROS_TIME";
 
         auto& nh = getNodeHandle();
+        sub_time_stamp = nh.subscribe("/sensor_sync_node/trigger_2", 10, &OusterDriver::trigger_stamp_cb, this, ros::TransportHints().tcpNoDelay());
 
         if (check_token(tokens, "IMU")) {
             imu_pub = nh.advertise<sensor_msgs::Imu>("imu", 100);
@@ -160,7 +161,58 @@ class OusterDriver : public OusterSensor {
 
     virtual void on_imu_packet_msg(const uint8_t* raw_imu_packet) override {
         if (imu_packet_handler)
-            imu_pub.publish(imu_packet_handler(raw_imu_packet));
+        {
+          sensor_msgs::Imu msg = imu_packet_handler(raw_imu_packet);
+
+          // std::cout << "Handling imu: " << msg.header.stamp.sec << std::endl;
+          ros::Time corrected_stamp;
+          static uint32_t err_count = 0;
+          if (msg.header.stamp.sec >= 5)
+          {
+            std::lock_guard<std::mutex> lock(time_stamp_queue_mutex);
+            // Since the buffer overflows at 4.something, handling the count before 5 would require additional logic. 
+            // Instead, we just skip the first 4 pointclouds and then start with the simpler logic.
+            while (!time_stamp_queue.empty())
+            {
+              uint32_t trigger_count = std::stoul(time_stamp_queue.front().frame_id);
+              // std::cout << "\tchecking: " << trigger_count << std::endl;
+
+              if (trigger_count == msg.header.stamp.sec)
+              {
+                // std::cout << "\tmatch found" << std::endl;
+                corrected_stamp.fromSec(time_stamp_queue.front().stamp.toSec() + msg.header.stamp.nsec / 1e9);
+                break;
+              }
+              else if (trigger_count < msg.header.stamp.sec)
+              {
+                // std::cout << "\tlidar is larger, popping " << trigger_count << std::endl;
+                // This is the only safe time to pop since the timestamp reported from the lidar is monotonically increasing
+                time_stamp_queue.pop();
+              }
+              else
+              {
+                ++err_count;
+              }
+            }
+          }
+          // std::cout << "\toriginal ts: " << msg.header.stamp.toSec() << std::endl;
+          // std::cout << "\tcorrected ts: " << corrected_stamp.toSec() << std::endl;
+          // std::cout << "\tqueue size: " << time_stamp_queue.size() << std::endl;
+          if (err_count)
+          {
+            std::cout << "\terror_count: " << err_count << std::endl;
+          }
+
+          msg.header.stamp = corrected_stamp;
+          imu_pub.publish(msg);
+        }
+    }
+
+    void trigger_stamp_cb(const std_msgs::HeaderConstPtr & msg)
+    {
+      std::lock_guard<std::mutex> lock(time_stamp_queue_mutex);
+      time_stamp_queue.push(*msg);
+      std::cout << "pushed " << msg->frame_id << std::endl;
     }
 
    private:
@@ -170,6 +222,10 @@ class OusterDriver : public OusterSensor {
     std::map<sensor::ChanField, ros::Publisher> image_pubs;
 
     OusterTransformsBroadcaster tf_bcast;
+    ros::Subscriber sub_time_stamp;
+    std::queue<std_msgs::Header> time_stamp_queue;
+    std::mutex time_stamp_queue_mutex;
+    const std::string node_ready_param_name{"/ready"};
 
     ImuPacketHandler::HandlerType imu_packet_handler;
     LidarPacketHandler::HandlerType lidar_packet_handler;
