@@ -244,42 +244,62 @@ class LidarPacketHandler {
         lidar_scan_estimated_ts = compute_scan_ts(lidar_scan->timestamp());
         lidar_scan_estimated_msg_ts =
             impl::ts_to_ros_time(lidar_scan_estimated_ts);
-
-        // Change the timestamp here
-        ros::Time corrected_stamp;
-        while (!time_stamp_queue.empty())
+        
+        static bool ready = false;
+        if (!ready)
         {
-          uint32_t trigger_count = std::stoul(time_stamp_queue.front().frame_id);
-          
-          // Special handling for the first
-          if (trigger_count == 1)
+          auto pnh = ros::NodeHandle();
+          pnh.setParam("ready", true);
+          ready = true;
+          std::cout << "Ready param set" << std::endl;
+        }
+
+        std::cout << "Handling lidar: " << lidar_scan_estimated_msg_ts.sec << std::endl;
+
+        ros::Time corrected_stamp;
+        if (lidar_scan_estimated_msg_ts.sec >= 5)
+        {
+          // Since the buffer overflows at 4.something, handling the count before 5 would require additional logic. 
+          // Instead, we just skip the first 4 pointclouds and then start with the simpler logic.
+          while (!time_stamp_queue.empty())
           {
-            if (lidar_scan_estimated_msg_ts.sec != 1)
+            uint32_t trigger_count = std::stoul(time_stamp_queue.front().frame_id);
+            std::cout << "\tchecking: " << trigger_count << std::endl;
+
+            static bool initialized = false;
+
+            if (trigger_count == lidar_scan_estimated_msg_ts.sec)
             {
+              std::cout << "\tmatch found" << std::endl;
+              corrected_stamp.fromSec(time_stamp_queue.front().stamp.toSec() + lidar_scan_estimated_msg_ts.nsec / 1e9);
+              initialized = true;
               break;
             }
-          }
-          std::cout << "\tchecking: " << trigger_count << std::endl;
-          std::cout << "against: " << lidar_scan_estimated_msg_ts.sec << std::endl; 
-          if (trigger_count == lidar_scan_estimated_msg_ts.sec)
-          {
-            corrected_stamp.fromSec(time_stamp_queue.front().stamp.toSec() + lidar_scan_estimated_msg_ts.nsec / 1e9);
-            time_stamp_queue.pop();
-            break;
-          }
-          else if (trigger_count < lidar_scan_estimated_msg_ts.sec)
-          {
-            std::cout << "dropping unused trigger message. trigger count: " << trigger_count << " original lidar output: " << lidar_scan_estimated_msg_ts << std::endl;
-            time_stamp_queue.pop();
-          }
-          else
-          {
-            std::cout << "Fatal error. trigger count: " << trigger_count << " original lidar output: " << lidar_scan_estimated_msg_ts << std::endl;
-            ros::shutdown();
+            else if (trigger_count < lidar_scan_estimated_msg_ts.sec)
+            {
+              std::cout << "\tlidar is larger, popping " << trigger_count << std::endl;
+              // This is the only safe time to pop since the timestamp reported from the lidar is monotonically increasing
+              time_stamp_queue.pop();
+            }
+            else
+            {
+              if (initialized)
+              {
+                std::cout << "\tFatal error. trigger count: " << trigger_count << std::endl;
+                ros::shutdown();
+              }
+              else
+              {
+                // This is normal if its the first message 
+                std::cout << "\tIgnoring initial message" << std::endl;
+                break;
+              }
+            }
           }
         }
-        std::cout << "original: " << lidar_scan_estimated_msg_ts.toSec() << std::endl;
-        std::cout << "modified: " << corrected_stamp.toSec() << std::endl;
+        std::cout << "\toriginal ts: " << lidar_scan_estimated_msg_ts.toSec() << std::endl;
+        std::cout << "\tcorrected ts: " << corrected_stamp.toSec() << std::endl;
+        std::cout << "\tqueue size: " << time_stamp_queue.size() << std::endl;
         lidar_scan_estimated_msg_ts = corrected_stamp;
         // This means that the timestamp of the clouds will be zero until the first trigger is recieved.
         return true;
