@@ -251,10 +251,10 @@ class LidarPacketHandler {
           auto pnh = ros::NodeHandle();
           pnh.setParam("ready", true);
           ready = true;
-          std::cout << "Ready param set" << std::endl;
+          // std::cout << "Ready param set" << std::endl;
         }
 
-        std::cout << "Handling lidar: " << lidar_scan_estimated_msg_ts.sec << std::endl;
+        // std::cout << "Handling lidar: " << lidar_scan_estimated_msg_ts.sec << std::endl;
 
         ros::Time corrected_stamp;
         if (lidar_scan_estimated_msg_ts.sec >= 5)
@@ -265,20 +265,20 @@ class LidarPacketHandler {
           while (!time_stamp_queue.empty())
           {
             uint32_t trigger_count = std::stoul(time_stamp_queue.front().frame_id);
-            std::cout << "\tchecking: " << trigger_count << std::endl;
+            // std::cout << "\tchecking: " << trigger_count << std::endl;
 
             static bool initialized = false;
 
             if (trigger_count == lidar_scan_estimated_msg_ts.sec)
             {
-              std::cout << "\tmatch found" << std::endl;
+              // std::cout << "\tmatch found" << std::endl;
               corrected_stamp.fromSec(time_stamp_queue.front().stamp.toSec() + lidar_scan_estimated_msg_ts.nsec / 1e9);
               initialized = true;
               break;
             }
             else if (trigger_count < lidar_scan_estimated_msg_ts.sec)
             {
-              std::cout << "\tlidar is larger, popping " << trigger_count << std::endl;
+              // std::cout << "\tlidar is larger, popping " << trigger_count << std::endl;
               // This is the only safe time to pop since the timestamp reported from the lidar is monotonically increasing
               time_stamp_queue.pop();
             }
@@ -286,21 +286,21 @@ class LidarPacketHandler {
             {
               if (initialized)
               {
-                std::cout << "\tFatal error. trigger count: " << trigger_count << std::endl;
+                // std::cout << "\tFatal error. trigger count: " << trigger_count << std::endl;
                 ros::shutdown();
               }
               else
               {
                 // This is normal if its the first message 
-                std::cout << "\tIgnoring initial message" << std::endl;
+                // std::cout << "\tIgnoring initial message" << std::endl;
                 break;
               }
             }
           }
         }
-        std::cout << "\toriginal ts: " << lidar_scan_estimated_msg_ts.toSec() << std::endl;
-        std::cout << "\tcorrected ts: " << corrected_stamp.toSec() << std::endl;
-        std::cout << "\tqueue size: " << time_stamp_queue.size() << std::endl;
+        // std::cout << "\toriginal ts: " << lidar_scan_estimated_msg_ts.toSec() << std::endl;
+        // std::cout << "\tcorrected ts: " << corrected_stamp.toSec() << std::endl;
+        // std::cout << "\tqueue size: " << time_stamp_queue.size() << std::endl;
         lidar_scan_estimated_msg_ts = corrected_stamp;
         // This means that the timestamp of the clouds will be zero until the first trigger is recieved.
         return true;
