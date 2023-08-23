@@ -52,12 +52,12 @@
     </node>
   </group>
 
-  <group ns="$(arg ouster_ns)">
+  <!-- <group ns="$(arg ouster_ns)">
     <node pkg="nodelet" type="nodelet" name="img_node"
       output="screen" required="true"
       args="load ouster_ros/OusterImage os_nodelet_mgr $(arg _no_bond)">
     </node>
-  </group>
+  </group> -->
 
   <!-- TODO: how can/should we handle the change of default ouster namespace in RVIZ? -->
   <node if="$(arg viz)"
