@@ -128,6 +128,10 @@ class OusterCloud : public nodelet::Nodelet {
                     for (size_t i = 0; i < msgs.size(); ++i) {
                         if (msgs[i]->header.stamp > last_msg_ts)
                             last_msg_ts = msgs[i]->header.stamp;
+                        if (msgs[i]->header.stamp.is_zero())
+                        {
+                          continue;
+                        }
                         lidar_pubs[i].publish(*msgs[i]);
                     }
                 }));
