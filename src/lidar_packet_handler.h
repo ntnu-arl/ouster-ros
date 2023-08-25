@@ -263,9 +263,14 @@ class LidarPacketHandler {
         }
 
         uint32_t &pulse_count = lidar_scan_estimated_msg_ts.sec;
-        // std::cout << "Handling " << pulse_count << std::endl;
+        std::cout << "Handling " << pulse_count << std::endl;
+        std::cout << "\t time since sync in: " << lidar_scan_estimated_msg_ts.nsec << std::endl;
 
         static int err_count = 0;
+        static int offset = 0;
+        static uint32_t last_pulse_count = 0;
+
+        uint32_t time_since_sync_in = lidar_scan_estimated_msg_ts.nsec;
 
         ros::Time corrected_stamp;
         if (pulse_count >= 5)
@@ -276,33 +281,53 @@ class LidarPacketHandler {
           while (!trigger_stamp_queue.empty())
           {
             uint32_t trigger_count = std::stoul(trigger_stamp_queue.front().frame_id);
-            // std::cout << "\tchecking " << trigger_count << std::endl;
+            std::cout << "\tchecking " << trigger_count << std::endl;
 
-            if (trigger_count == pulse_count)
+            if (trigger_count == pulse_count + offset)
             {
+              std::cout << "\t match found" << std::endl;
+              if (last_pulse_count == pulse_count)
+              {
+                // This is a special case. For some reason the lidar did not register the pulse that was sent.
+                // However, we know that it happened. so we just increase the offset and continue so that the next pulse is used.
+                ++offset;
+                std::cout << "\t\tIncreasing offset to " << offset << std::endl;
+                corrected_stamp.fromSec(trigger_stamp_queue.front().stamp.toSec() + 1e-9 * lidar_scan_estimated_msg_ts.nsec);
+                break;
+              }
+
               // Exact match found
               corrected_stamp.fromSec(trigger_stamp_queue.front().stamp.toSec() + 1e-9 * lidar_scan_estimated_msg_ts.nsec);
               break;
             }
-            else if (trigger_count < pulse_count)
+            else if (trigger_count < pulse_count + offset)
             {
+              std::cout << "\tDiscarding " << trigger_count << std::endl;
               // Trigger stamp is too old, discard
               trigger_stamp_queue.pop();
             }
             else
             {
-              // std::cout << "\t\tNo match found" << std::endl;
+              std::cout << "\t\tNo match found" << std::endl;
               ++err_count;
               break;
             }
           }
         }
+        std::cout << "\t corrected stamp: " << corrected_stamp.sec << "." << corrected_stamp.nsec << std::endl; 
+
+        last_pulse_count = pulse_count;
         lidar_scan_estimated_msg_ts = corrected_stamp;
 
-        // if (err_count)
-        // {
-        //   std::cout << "Error count: " << err_count << std::endl;
-        // }
+        if (err_count)
+        {
+          std::cout << "Error count: " << err_count << std::endl;
+        }
+
+        if (offset)
+        {
+          std::cout << "Offset: " << offset << std::endl;
+        }
 
         return true;
     }
@@ -345,7 +370,7 @@ class LidarPacketHandler {
     }
 
     void trigger_stamp_callback(const std_msgs::Header& msg) {
-        // std::cout << "Pushing " << msg.frame_id << std::endl;
+        std::cout << "Pushing " << msg.frame_id << std::endl;
         std::lock_guard<std::mutex> lock(trigger_stamp_queue_mutex);
         trigger_stamp_queue.push(msg);
     }
