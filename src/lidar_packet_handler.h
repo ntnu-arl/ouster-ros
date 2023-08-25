@@ -253,43 +253,57 @@ class LidarPacketHandler {
         lidar_scan_estimated_msg_ts =
             impl::ts_to_ros_time(lidar_scan_estimated_ts);
 
-        uint32_t & pulse_count = lidar_scan_estimated_msg_ts.sec;
+        static bool first = true;
+        if (first)
+        {
+          first = false;
+          auto nh = ros::NodeHandle();
+          nh.setParam("ready", true);
+          // Sensor sync will now start the triggering
+        }
+
+        uint32_t &pulse_count = lidar_scan_estimated_msg_ts.sec;
         // std::cout << "Handling " << pulse_count << std::endl;
 
         static int err_count = 0;
 
         ros::Time corrected_stamp;
-        std::lock_guard<std::mutex> lock(trigger_stamp_queue_mutex);
-        while (!trigger_stamp_queue.empty()) 
+        if (pulse_count >= 5)
         {
-          uint32_t trigger_count = std::stoul(trigger_stamp_queue.front().frame_id);
-          // std::cout << "\tchecking " << trigger_count << std::endl;
+          // Since the buffer for the secs on the lidar overflows and resets to 0 on 4.something
+          // a pulse_count of 5 or above means that the lidar has definitely been triggered
+          std::lock_guard<std::mutex> lock(trigger_stamp_queue_mutex);
+          while (!trigger_stamp_queue.empty())
+          {
+            uint32_t trigger_count = std::stoul(trigger_stamp_queue.front().frame_id);
+            // std::cout << "\tchecking " << trigger_count << std::endl;
 
-          if (trigger_count == pulse_count)
-          {
-            // Exact match found
-            corrected_stamp.fromSec(trigger_stamp_queue.front().stamp.toSec() + 1e-9 * lidar_scan_estimated_msg_ts.nsec);
-            break;
-          }
-          else if (trigger_count < pulse_count)
-          {
-            // Trigger stamp is too old, discard
-            trigger_stamp_queue.pop();
-          }
-          else
-          {
-            // std::cout << "\t\tNo match found" << std::endl;
-            ++err_count;
-            break;
+            if (trigger_count == pulse_count)
+            {
+              // Exact match found
+              corrected_stamp.fromSec(trigger_stamp_queue.front().stamp.toSec() + 1e-9 * lidar_scan_estimated_msg_ts.nsec);
+              break;
+            }
+            else if (trigger_count < pulse_count)
+            {
+              // Trigger stamp is too old, discard
+              trigger_stamp_queue.pop();
+            }
+            else
+            {
+              // std::cout << "\t\tNo match found" << std::endl;
+              ++err_count;
+              break;
+            }
           }
         }
+        lidar_scan_estimated_msg_ts = corrected_stamp;
 
         // if (err_count)
         // {
         //   std::cout << "Error count: " << err_count << std::endl;
         // }
 
-        lidar_scan_estimated_msg_ts = corrected_stamp;
         return true;
     }
 
