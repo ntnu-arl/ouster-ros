@@ -55,6 +55,15 @@ class OusterCloud : public nodelet::Nodelet {
         // TODO: handle sensor reconfigurtion
         NODELET_INFO("OusterCloud: retrieved new sensor metadata!");
 
+        static bool first = true;
+        if (!first) {
+            NODELET_WARN(
+                "OusterCloud: received new metadata while already running, "
+                "ignoring!");
+            return;
+        }
+        first = false;
+
         auto info = sensor::parse_metadata(metadata_msg->data);
 
         tf_bcast.parse_parameters(getPrivateNodeHandle());
