@@ -310,7 +310,7 @@ class LidarPacketHandler {
     }
 
     void trigger_stamp_callback(const std_msgs::Header& msg) {
-        std::cout << "Pushing " << msg.frame_id << std::endl;
+        // std::cout << "Pushing " << msg.frame_id << std::endl;
         std::lock_guard<std::mutex> lock(trigger_stamp_queue_mutex);
         trigger_stamp_queue.push(msg);
     }
