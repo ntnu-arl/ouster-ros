@@ -9,7 +9,7 @@
     }"/>
   <arg name="ptp_utc_tai_offset" default="-37.0"
     doc="UTC/TAI offset in seconds to apply when using TIME_FROM_PTP_1588"/>
-  <arg name="viz" default="true" doc="whether to run a rviz"/>
+  <arg name="viz" default="false" doc="whether to run a rviz"/>
   <arg name="rviz_config" default="$(find ouster_ros)/config/viz.rviz" doc="optional rviz config file"/>
 
   <arg name="tf_prefix" default=" " doc="namespace for tf transforms"/>
@@ -19,7 +19,7 @@
     doc="sets name of choice for the os_lidar tf frame, value can not be empty"/>
   <arg name="imu_frame" default="os_imu"
     doc="sets name of choice for the os_imu tf frame, value can not be empty"/>
-  <arg name="point_cloud_frame" default=" "
+  <arg name="point_cloud_frame" default="os_sensor"
     doc="which frame to be used when publishing PointCloud2 or LaserScan messages.
     Choose between the value of sensor_frame or lidar_frame, leaving this value empty
     would set lidar_frame to be the frame used when publishing these messages."/>
