@@ -262,21 +262,38 @@ class LidarPacketHandler {
           // Sensor sync will now start the triggering
         }
 
-        uint32_t &pulse_count = lidar_scan_estimated_msg_ts.sec;
-        std::cout << "Handling " << pulse_count << std::endl;
-        std::cout << "\t time since sync in: " << lidar_scan_estimated_msg_ts.nsec << std::endl;
-
+        uint32_t pulse_count = lidar_scan_estimated_msg_ts.sec;
         static int err_count = 0;
         static int offset = 0;
         static uint32_t last_pulse_count = 0;
-
         uint32_t time_since_sync_in = lidar_scan_estimated_msg_ts.nsec;
 
         ros::Time corrected_stamp;
-        if (pulse_count >= 5)
+
+        if (pulse_count >= 1)
         {
-          // Since the buffer for the secs on the lidar overflows and resets to 0 on 4.something
-          // a pulse_count of 5 or above means that the lidar has definitely been triggered
+          // Correction for the actual pulse count
+          pulse_count -= 1;
+        }
+        else
+        {
+          lidar_scan_estimated_msg_ts = corrected_stamp;
+          return true;
+        }
+
+        std::cout << "Handling " << pulse_count << std::endl;
+        std::cout << "\t time since sync in: " << lidar_scan_estimated_msg_ts.nsec << std::endl;
+        if (pulse_count >= 6)
+        {
+
+          if (pulse_count != last_pulse_count + 1)
+          {
+            std::cout << "\t\tMissed pulse" << std::endl;
+            ++err_count;
+          }
+
+          // Since the buffer for the secs on the lidar overflows and resets to 0 on 5.something
+          // a pulse_count of 6 or above means that the lidar has definitely been triggered
           std::lock_guard<std::mutex> lock(trigger_stamp_queue_mutex);
           while (!trigger_stamp_queue.empty())
           {
@@ -288,6 +305,7 @@ class LidarPacketHandler {
               std::cout << "\t match found" << std::endl;
               if (last_pulse_count == pulse_count)
               {
+                // Handle missed pulses
                 // This is a special case. For some reason the lidar did not register the pulse that was sent.
                 // However, we know that it happened. so we just increase the offset and continue so that the next pulse is used.
                 ++offset;
@@ -298,6 +316,7 @@ class LidarPacketHandler {
 
               // Exact match found
               corrected_stamp.fromSec(trigger_stamp_queue.front().stamp.toSec() + 1e-9 * lidar_scan_estimated_msg_ts.nsec);
+              trigger_stamp_queue.pop();
               break;
             }
             else if (trigger_count < pulse_count + offset)
