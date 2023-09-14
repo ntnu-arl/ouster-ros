@@ -207,10 +207,29 @@ void copy_scan_to_cloud_destaggered(
 #ifdef __OUSTER_UTILIZE_OPENMP__
 #pragma omp parallel for collapse(2)
 #endif
+    double max_ts = std::numeric_limits<double>::min();
     for (auto u = 0; u < ls.h; u++) {
         for (auto v = 0; v < ls.w; v++) {
             const auto v_shift = (v + ls.w - pixel_shift_by_row[u]) % ls.w;
-            auto ts = timestamp[v_shift]; ts = ts > scan_ts ? ts - scan_ts : 0UL;
+            auto ts = timestamp[v_shift]; 
+            if (ts < scan_ts)
+            {
+              ts = 0UL;
+            }
+            else
+            {
+              if (ts - scan_ts < 1e8)
+              {
+                ts = ts - scan_ts;
+              }
+              else
+              {
+                // Move the reference point
+                auto scan_ref = scan_ts - scan_ts % 1000000000UL;
+                ts = scan_ref + 100000000UL + ts % 100000000UL - scan_ts;
+              }
+            }
+            max_ts = std::max(max_ts, (double)ts);
             const auto src_idx = u * ls.w + v_shift;
             const auto tgt_idx = u * ls.w + v;
             const auto xyz = points.row(src_idx);
@@ -226,6 +245,8 @@ void copy_scan_to_cloud_destaggered(
             };
         }
     }
+
+    std::cout << "Max ts: " << max_ts << std::endl;
 }
 
 void scan_to_cloud_f(ouster::PointsF& points,
