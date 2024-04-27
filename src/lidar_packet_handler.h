@@ -104,6 +104,7 @@ class LidarPacketHandler {
         // Sensor sync
         auto pnh = ros::NodeHandle("~");
         sub_trigger_stamp = pnh.subscribe("/sensor_sync_node/trigger_2", 10, &LidarPacketHandler::trigger_stamp_callback, this);
+        pub_orig_stamp = pnh.advertise<std_msgs::Header>("orig_cloud_stamp", 10);
 
         // initalize time handlers
         scan_col_ts_spacing_ns = compute_scan_col_ts_spacing_ns(info.mode);
@@ -245,6 +246,10 @@ class LidarPacketHandler {
         lidar_scan_estimated_msg_ts =
             impl::ts_to_ros_time(lidar_scan_estimated_ts);
 
+        std_msgs::Header orig_header;
+        orig_header.stamp = lidar_scan_estimated_msg_ts;
+        pub_orig_stamp.publish(orig_header);
+
         static bool first = true;
         if (first)
         {
@@ -259,9 +264,17 @@ class LidarPacketHandler {
 
         static int err_count = 0;
 
+        static uint32_t last_pulse_count = pulse_count;
+        static uint32_t pulse_miss = 0;
+
         ros::Time corrected_stamp;
         if (pulse_count >= 5)
         {
+          if(pulse_count != last_pulse_count+1)
+          {
+            std::cout << "Pulse miss" << std::endl;
+            ++err_count;
+          }
           // Since the buffer for the secs on the lidar overflows and resets to 0 on 4.something
           // a pulse_count of 5 or above means that the lidar has definitely been triggered
           std::lock_guard<std::mutex> lock(trigger_stamp_queue_mutex);
@@ -273,6 +286,18 @@ class LidarPacketHandler {
             if (trigger_count == pulse_count)
             {
               // Exact match found
+              if (last_pulse_count == pulse_count)
+              {
+                std::cout << "****************\n****************\n****************\n****************\nERROR1" << std::endl;
+                ++pulse_miss;
+              }
+
+              if (pulse_count != last_pulse_count + 1)
+              {
+                std::cout << "****************\n****************\n****************\n****************\nERROR2" << std::endl;
+                ++pulse_miss;
+              }
+
               corrected_stamp.fromSec(trigger_stamp_queue.front().stamp.toSec() + 1e-9 * lidar_scan_estimated_msg_ts.nsec);
               break;
             }
@@ -289,12 +314,18 @@ class LidarPacketHandler {
             }
           }
         }
+        last_pulse_count = pulse_count;
         lidar_scan_estimated_msg_ts = corrected_stamp;
 
-        // if (err_count)
-        // {
-        //   std::cout << "Error count: " << err_count << std::endl;
-        // }
+        if (err_count)
+        {
+          std::cout << "Error count: " << err_count << std::endl;
+        }
+
+        if (pulse_miss)
+        {
+          std::cout << "Pulse miss: " << pulse_miss << std::endl;
+        }
 
         return true;
     }
@@ -339,6 +370,7 @@ class LidarPacketHandler {
     ros::Subscriber sub_trigger_stamp;
     std::queue<std_msgs::Header> trigger_stamp_queue;
     std::mutex trigger_stamp_queue_mutex;
+    ros::Publisher pub_orig_stamp;
 
     bool lidar_handler_ros_time_frame_ts_initialized = false;
     ros::Time lidar_handler_ros_time_frame_ts;
