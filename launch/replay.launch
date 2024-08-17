@@ -1,6 +1,6 @@
 <launch>
 
-  <arg name="ouster_ns" default="ouster" doc="Override the default namespace of all ouster nodes"/>
+  <arg name="ouster_ns" default="os_cloud_node" doc="Override the default namespace of all ouster nodes"/>
   <arg name="metadata" default ="" doc="path to read metadata file when replaying sensor data"/>
   <arg name="bag_file" default="" doc="file name to use for the recorded bag file"/>
   <arg name="timestamp_mode" default=" " doc="A parameter that allows you to override the timestamp measurements;
@@ -9,7 +9,7 @@
     }"/>
   <arg name="ptp_utc_tai_offset" default="-37.0"
     doc="UTC/TAI offset in seconds to apply when using TIME_FROM_PTP_1588"/>
-  <arg name="viz" default="true" doc="whether to run a rviz"/>
+  <arg name="viz" default="false" doc="whether to run a rviz"/>
   <arg name="rviz_config" default="$(find ouster_ros)/config/viz.rviz" doc="optional rviz config file"/>
 
   <arg name="tf_prefix" default=" " doc="namespace for tf transforms"/>
